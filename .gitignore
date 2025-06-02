@@ -1,0 +1,6 @@
+result
+__pycache__
+build
+dist
+venv311
+main.spec
