@@ -4,11 +4,13 @@ from algo_flow import generate_monthly_schedule_from_csv, generate_preference_sc
 import os
 import sys
 import json
+import openpyxl
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, Border, Side
 from collections import defaultdict
 import threading
 import time
+import traceback
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -53,10 +55,10 @@ class ScheduleApp(ctk.CTk):
         self.weekly_csv_btn = ctk.CTkButton(weekly_frame, text="Select CSV", command=self.select_csv_two)
         self.weekly_csv_btn.pack(pady=5, fill="x")
 
-        self.weekly_file_btn = ctk.CTkButton(weekly_frame, text="Select Weekly Schedule", command=self.select_weekly_schedule)
+        self.weekly_file_btn = ctk.CTkButton(weekly_frame, text="Select Weekly Schedule XLSX", command=self.select_weekly_schedule)
         self.weekly_file_btn.pack(pady=5, fill="x")
 
-        self.deleted_shifts_btn = ctk.CTkButton(weekly_frame, text="Select Deleted Shifts XLSXS", command=self.select_deleted_shifts)
+        self.deleted_shifts_btn = ctk.CTkButton(weekly_frame, text="Select Deleted Shifts XLSX", command=self.select_deleted_shifts)
         self.deleted_shifts_btn.pack(pady=5, fill="x")
 
         self.modify_btn = ctk.CTkButton(weekly_frame, text="Apply Changes to Weekly Schedule", command=self.modify_weekly_schedule, fg_color="#4CAF50")
@@ -79,7 +81,7 @@ class ScheduleApp(ctk.CTk):
             self.weekly_csv_btn.configure(text=f"CSV: {os.path.basename(self.input_csv_two)}")
 
     def select_weekly_schedule(self):
-        self.weekly_schedule_file = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
+        self.weekly_schedule_file = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
         if self.weekly_schedule_file:
             self.weekly_file_btn.configure(text=f"Weekly: {os.path.basename(self.weekly_schedule_file)}")
 
@@ -109,12 +111,10 @@ class ScheduleApp(ctk.CTk):
             messagebox.showerror("Error", "Please select a CSV file.")
             return
 
-        output_file = filedialog.asksaveasfilename(
-            title="Save Excel File",
-            defaultextension=".xlsx",
-            filetypes=[("Excel files", "*.xlsx")]
+        output_dir = filedialog.askdirectory(
+            title="Select Folder to Save Weekly Excel Files"
         )
-        if not output_file:
+        if not output_dir:
             return
 
         self.gen_month_btn.configure(state="disabled")
@@ -123,43 +123,42 @@ class ScheduleApp(ctk.CTk):
         self.modify_btn.configure(state="disabled")
         self.weekly_file_btn.configure(state="disabled")
         self.deleted_shifts_btn.configure(state="disabled")
-        self.start_spinner("Generating monthly schedule...")
+        self.start_spinner("Generating weekly schedules...")
 
         def run():
             try:
-                generate_preference_schedule_from_csv(
-                    self.input_csv_one,
-                    self.input_json,
-                    os.path.join(os.path.dirname(output_file), "week_1.txt"),
-                    defaultdict(int),
-                    1
-                )
+                generate_monthly_schedule_from_csv(self.input_csv_one,
+                    self.input_json, output_dir)
 
-                all_weeks = []
-                with open(os.path.join(os.path.dirname(output_file), "week_1.txt"), "r", encoding="utf-8") as f:
-                    location, room = None, None
-                    for line in f:
-                        line = line.strip()
-                        if line.startswith("Локація:"):
-                            location = line.split("Локація:")[1].strip()
-                        elif line.startswith("Кабінет:"):
-                            room = line.split("Кабінет:")[1].strip()
-                        elif line.startswith("(") and ")" in line:
-                            try:
-                                part, doctor = line.split(") - ")
-                                day, shift = eval(part + ")")
-                                all_weeks.append((1, location, room, day, shift, doctor if doctor != "None" else ""))
-                            except:
-                                pass
+                for week in range(1, 5):
+                    rows = []
+                    with open(os.path.join(output_dir, f"week_{week}.txt"), "r", encoding="utf-8") as f:
+                        location, room = None, None
+                        for line in f:
+                            line = line.strip()
+                            if line.startswith("Локація:"):
+                                location = line.split("Локація:")[1].strip()
+                            elif line.startswith("Кабінет:"):
+                                room = line.split("Кабінет:")[1].strip()
+                            elif line.startswith("(") and ")" in line:
+                                try:
+                                    part, doctor = line.split(") - ")
+                                    day, shift = eval(part + ")")
+                                    rows.append((week, location, room, day, shift, doctor if doctor != "None" else ""))
+                                except:
+                                    pass
 
-                wb = Workbook()
-                ws = wb.active
-                ws.title = "Monthly Schedule"
-                ws.append(["Week", "Location", "Room", "Day", "Shift", "Doctor"])
-                for row in all_weeks:
-                    ws.append(row)
-                wb.save(output_file)
-                messagebox.showinfo("Success", f"Monthly schedule saved to:\n{output_file}")
+                    wb = Workbook()
+                    ws = wb.active
+                    ws.title = f"Week {week}"
+                    ws.append(["Week", "Location", "Room", "Day", "Shift", "Doctor"])
+                    for row in rows:
+                        ws.append(row)
+
+                    output_file = os.path.join(output_dir, f"week_{week}.xlsx")
+                    wb.save(output_file)
+
+                messagebox.showinfo("Success", f"All weekly schedules saved to:\n{output_dir}")
             except Exception as e:
                 messagebox.showerror("Error", str(e))
             finally:
@@ -178,14 +177,6 @@ class ScheduleApp(ctk.CTk):
             messagebox.showerror("Error", "Please select all required files (CSV, weekly schedule, deleted shifts).")
             return
 
-        output_file = filedialog.asksaveasfilename(
-            title="Save Updated Weekly Schedule",
-            defaultextension=".xlsx",
-            filetypes=[("Excel files", "*.xlsx")]
-        )
-        if not output_file:
-            return
-
         self.gen_month_btn.configure(state="disabled")
         self.csv_btn.configure(state="disabled")
         self.weekly_csv_btn.configure(state="disabled")
@@ -196,15 +187,92 @@ class ScheduleApp(ctk.CTk):
 
         def run():
             try:
-                updated_schedule = change_weekly_schedule(
+                # 1. Convert XLSX to TXT
+                temp_txt = self.weekly_schedule_file.replace(".xlsx", "_temp.txt")
+                wb = openpyxl.load_workbook(self.weekly_schedule_file)
+                ws = wb.active
+
+                with open(temp_txt, "w", encoding="utf-8") as f:
+                    last_loc, last_room = None, None
+                    for row in ws.iter_rows(min_row=2, values_only=True):
+                        _, location, room, day, shift, doctor = row
+
+                        # New location block
+                        if location != last_loc:
+                            f.write(f"Локація: {location}\n")
+                            f.write("=" * 40 + "\n")
+                            last_loc = location
+                            last_room = None  # reset room tracking
+
+                        # New cabinet block
+                        if room != last_room :
+                            if last_room != None:
+                                f.write("-" * 30 + "\n")
+                            f.write(f"Кабінет: {room}\n")
+                            f.write("-" * 30 + "\n")
+                            last_room = room
+
+                        # Write shift
+                        f.write(f"({day}, {shift}) - {doctor if doctor else 'None'}\n")
+
+                    f.write("-" * 30 + "\n")  # optional footer for last room
+
+                deleted_shifts = defaultdict(set)
+
+                wb_deleted = openpyxl.load_workbook(self.deleted_shifts_file)
+                ws_deleted = wb_deleted.active
+
+                for row in ws_deleted.iter_rows(min_row=2, values_only=True):  # skip header
+                    doctor, shift_str = row
+                    if doctor and shift_str:
+                        try:
+                            parts = shift_str.strip().split(".")
+                            if len(parts) == 2:
+                                day, shift = map(int, parts)
+                                deleted_shifts[doctor.strip()].add((day, shift))
+                        except Exception as e:
+                            print(f"⚠️ Could not parse shift '{shift_str}' for doctor '{doctor}': {e}")
+
+                print(deleted_shifts)
+
+                change_weekly_schedule(
                     self.input_csv_two,
                     self.input_json,
-                    self.weekly_schedule_file,
-                    self.deleted_shifts_file
+                    temp_txt,
+                    deleted_shifts
                 )
-                messagebox.showinfo("Success", f"Weekly schedule updated in:\n{self.weekly_schedule_file}")
+
+                rows = []
+                with open(temp_txt, "r", encoding="utf-8") as f:
+                    location, room = None, None
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("Локація:"):
+                            location = line.split("Локація:")[1].strip()
+                        elif line.startswith("Кабінет:"):
+                            room = line.split("Кабінет:")[1].strip()
+                        elif line.startswith("(") and ")" in line:
+                            try:
+                                part, doctor = line.split(") - ")
+                                day, shift = eval(part + ")")
+                                rows.append((None, location, room, day, shift, doctor if doctor != "None" else ""))
+                            except:
+                                pass
+
+                wb_out = openpyxl.Workbook()
+                ws_out = wb_out.active
+                ws_out.title = "Weekly Schedule"
+                ws_out.append(["Week", "Location", "Room", "Day", "Shift", "Doctor"])
+                for row in rows:
+                    ws_out.append(row)
+                wb_out.save(self.weekly_schedule_file)
+
+                os.remove(temp_txt)
+                messagebox.showinfo("Success", f"Weekly schedule updated:\n{self.weekly_schedule_file}")
             except Exception as e:
-                messagebox.showerror("Modification Failed", str(e))
+                traceback_str = traceback.format_exc()
+                print("❌ Exception occurred:\n", traceback_str)
+                messagebox.showerror("Modification Failed", traceback_str)
             finally:
                 self.stop_spinner()
                 self.gen_month_btn.configure(state="normal")

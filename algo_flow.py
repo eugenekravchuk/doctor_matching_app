@@ -225,7 +225,7 @@ def generate_monthly_schedule_from_csv(input_csv_path: str, loc_cabs_path: str, 
 
     for week in range(1, 5):
 
-        out_res = output_path + f"week_{week}.txt"
+        out_res =os.path.join(output_path, f"week_{week}.txt")
 
         schedule = generate_preference_schedule_from_csv(input_csv_path, loc_cabs_path, out_res, doctor_penalty, week)
         for loc in schedule:
@@ -243,7 +243,7 @@ def generate_monthly_schedule_from_csv(input_csv_path: str, loc_cabs_path: str, 
 
 def change_weekly_schedule(input_csv_path: str, loc_cabs_path: str, weekly_schedule_path: str, deleted_shifts: dict) -> str:
     df = pd.read_csv(input_csv_path)
-    week = int(weekly_schedule_path.split('_')[-1][0])
+    week = int(weekly_schedule_path.split('_')[-2][0])
     with open(weekly_schedule_path, 'r', encoding='utf-8') as f:
         weekly_schedule = f.read().splitlines()
         current_schedule = {}
