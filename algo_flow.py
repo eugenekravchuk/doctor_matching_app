@@ -391,5 +391,4 @@ if __name__ == "__main__":
     output_path = "./result/"
     week_path = "./result/week_1.txt"
     generate_monthly_schedule_from_csv(input_csv_path, loc_cabs_path, output_path)
-    # change_weekly_schedule(input_csv_path, loc_cabs_path, week_path, {'Горічко І.В.': {(3, 1)}})
         
